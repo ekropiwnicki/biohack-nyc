@@ -32,17 +32,32 @@ def harmonize_genes(matrix:pd.DataFrame):
     matrix.set_index('gene_name', inplace=True)
     return matrix
 
-def create_target_vector(rna_seq_df:pd.DataFrame, target_value:str="TPM"):
+def gene_expression_categories(x):
+    """
+    Not super extendable, needs to be refactored probably.
+    Function applied on TPM (or FPKM) column to assign 0 as "not expressed" and 1 as "expressed"
+    """
+    if x < 0.1:
+        return 0
+    if x >= 0.1:
+        return 1
+
+def create_target_vector(rna_seq_df:pd.DataFrame, target_value:str="TPM", vector_type:str="continuous"):
     """
     The target vector in this case is the accompanying RNA-seq data for each gene in the feature matrix.
 
     rna_seq_df (pd.DataFrame): RNA-seq dataframe
     target_value (str): the value used as the target variable to predict (i.e. TPM or FPKM)
+    vector_type (str): Decide whether the RNA-seq target variable should be continuous (regression problem) or binary (classification problem)
     """
     rna_seq_df['gene_id_clean'] = rna_seq_df['gene_id'].apply(lambda x: x.split(".")[0]) # strip versions from ENSG identifiers
     rna_seq_df.set_index('gene_id_clean', inplace = True)
     rna_seq_df = harmonize_genes(rna_seq_df)
-    y = np.log10(rna_seq_df[target_value]+0.001)
+    if vector_type == 'continuous':
+        y = np.log10(rna_seq_df[target_value]+0.001)
+    elif vector_type == 'binary':
+        y = rna_seq_df[target_value].apply(lambda x: gene_expression_categories(x))
+        
     return y
 
 def create_feature_matrix(epigenetics_df:List[pd.DataFrame]):
@@ -63,9 +78,9 @@ def create_feature_matrix(epigenetics_df:List[pd.DataFrame]):
 
     return feature_matrix
 
-def create_train_test_matrices(epigenetics_df:List[pd.DataFrame], rna_seq_df:pd.DataFrame):
+def create_train_test_matrices(epigenetics_df:List[pd.DataFrame], rna_seq_df:pd.DataFrame, target_value:str="TPM", vector_type: str = "continuous"):
     feature_matrix = create_feature_matrix(epigenetics_df)
-    target_vector = create_target_vector(rna_seq_df)
+    target_vector = create_target_vector(rna_seq_df,target_value=target_value,vector_type=vector_type)
     data = pd.merge(feature_matrix,target_vector,left_index=True,right_index=True)
     X, y = data.iloc[:, :-1], data.iloc[:, -1]
     X.fillna(0, inplace = True)
